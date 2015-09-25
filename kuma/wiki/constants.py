@@ -208,7 +208,8 @@ REVIEW_FLAG_TAGS = (
 REVIEW_FLAG_TAGS_DEFAULT = ['technical', 'editorial']
 
 LOCALIZATION_FLAG_TAGS = (
-    ('inprogress', _lazy('Localization in progress - not completely translated yet.')),
+    ('inprogress', _lazy(
+        'Localization in progress - not completely translated yet.')),
 )
 
 # TODO: This is info derived from urls.py, but unsure how to DRY it

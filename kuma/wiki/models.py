@@ -591,9 +591,9 @@ class Document(NotificationsMixin, models.Model):
                 translations.append({
                     'last_edit': revision.created.isoformat(),
                     'locale': translation.locale,
-                    'localization_tags': list(revision.localization_tags
-                                                      .values_list('name',
-                                                                   flat=True)),
+                    'localization_tags': (
+                        ['inprogress'] if revision.localization_in_progress
+                        else []),
                     'review_tags': list(revision.review_tags
                                                 .values_list('name',
                                                              flat=True)),
@@ -608,9 +608,9 @@ class Document(NotificationsMixin, models.Model):
             review_tags = list(self.current_revision
                                    .review_tags
                                    .values_list('name', flat=True))
-            localization_tags = list(self.current_revision
-                                         .localization_tags
-                                         .values_list('name', flat=True))
+            localization_tags = (
+                ['inprogress'] if self.current_revision.localization_in_progress
+                else [])
             last_edit = self.current_revision.created.isoformat()
             if self.current_revision.summary:
                 summary = self.current_revision.summary
@@ -1220,18 +1220,17 @@ Full traceback:
 
                 if parent_topic.current_revision:
                     # Don't forget to clone a current revision
-                    new_rev = Revision.objects.get(pk=parent_topic.current_revision.pk)
+                    new_rev = Revision.objects.get(
+                        pk=parent_topic.current_revision.pk)
                     new_rev.pk = None
                     new_rev.document = new_parent
                     # HACK: Let's auto-add tags that flag this as a topic stub
                     stub_tags = '"TopicStub","NeedsTranslation"'
-                    stub_l10n_tags = ['inprogress']
                     if new_rev.tags:
                         new_rev.tags = '%s,%s' % (new_rev.tags, stub_tags)
                     else:
                         new_rev.tags = stub_tags
                     new_rev.save()
-                    new_rev.localization_tags.add(*stub_l10n_tags)
 
         # Finally, assign the new default parent topic
         self.parent_topic = new_parent
@@ -1518,27 +1517,10 @@ class ReviewTag(TagBase):
         verbose_name_plural = _("Review Tags")
 
 
-class LocalizationTag(TagBase):
-    """A tag indicating localization status, mainly for revisions"""
-    class Meta:
-        verbose_name = _("Localization Tag")
-        verbose_name_plural = _("Localization Tags")
-
-
 class ReviewTaggedRevision(ItemBase):
     """Through model, just for review tags on revisions"""
     content_object = models.ForeignKey('Revision')
     tag = models.ForeignKey(ReviewTag, related_name="%(app_label)s_%(class)s_items")
-
-    @classmethod
-    def tags_for(cls, *args, **kwargs):
-        return tags_for(cls, *args, **kwargs)
-
-
-class LocalizationTaggedRevision(ItemBase):
-    """Through model, just for localization tags on revisions"""
-    content_object = models.ForeignKey('Revision')
-    tag = models.ForeignKey(LocalizationTag, related_name="%(app_label)s_%(class)s_items")
 
     @classmethod
     def tags_for(cls, *args, **kwargs):
@@ -1586,7 +1568,9 @@ class Revision(models.Model):
     # should constrain things from getting expensive.
     review_tags = TaggableManager(through=ReviewTaggedRevision)
 
-    localization_tags = TaggableManager(through=LocalizationTaggedRevision)
+    # TODO: Migrate data from the tags tables.
+    localization_in_progress = models.BooleanField(
+        default=False, db_index=True, help_text='Localization in progress')
 
     toc_depth = models.IntegerField(choices=TOC_DEPTH_CHOICES,
                                     default=TOC_DEPTH_ALL)
@@ -1772,10 +1756,6 @@ class Revision(models.Model):
     @cached_property
     def needs_technical_review(self):
         return self.review_tags.filter(name='technical').exists()
-
-    @cached_property
-    def localization_in_progress(self):
-        return self.localization_tags.filter(name='inprogress').exists()
 
     @property
     def translation_age(self):

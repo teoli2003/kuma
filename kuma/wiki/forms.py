@@ -1,19 +1,19 @@
-from tower import ugettext as _, ugettext_lazy as _lazy
 import waffle
+from tower import ugettext as _
+from tower import ugettext_lazy as _lazy
 
 from django import forms
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.forms.widgets import CheckboxSelectMultiple
 
-
-from kuma.contentflagging.forms import ContentFlagForm
 import kuma.wiki.content
+from kuma.contentflagging.forms import ContentFlagForm
 from kuma.core.form_fields import StrippedCharField
-from .constants import (SLUG_CLEANSING_RE, INVALID_DOC_SLUG_CHARS_RE,
-                        INVALID_REV_SLUG_CHARS_RE,
-                        DOCUMENT_PATH_RE, REVIEW_FLAG_TAGS,
-                        LOCALIZATION_FLAG_TAGS, RESERVED_SLUGS_RES)
+
+from .constants import (DOCUMENT_PATH_RE, INVALID_DOC_SLUG_CHARS_RE,
+                        INVALID_REV_SLUG_CHARS_RE, RESERVED_SLUGS_RES,
+                        REVIEW_FLAG_TAGS, SLUG_CLEANSING_RE)
 from .events import EditDocumentEvent
 from .models import Document, Revision, RevisionIP, valid_slug_parent
 from .tasks import send_first_edit_email
@@ -195,11 +195,9 @@ class RevisionForm(forms.ModelForm):
         required=False,
         choices=REVIEW_FLAG_TAGS)
 
-    localization_tags = forms.MultipleChoiceField(
+    localization_in_progress = forms.BooleanField(
         label=_("Tag this revision for localization?"),
-        widget=CheckboxSelectMultiple,
-        required=False,
-        choices=LOCALIZATION_FLAG_TAGS)
+        required=False)
 
     current_rev = forms.CharField(required=False,
                                   widget=forms.HiddenInput())
@@ -207,8 +205,8 @@ class RevisionForm(forms.ModelForm):
     class Meta(object):
         model = Revision
         fields = ('title', 'slug', 'tags', 'keywords', 'summary', 'content',
-                  'comment', 'based_on', 'toc_depth',
-                  'render_max_age')
+                  'comment', 'based_on', 'toc_depth', 'render_max_age',
+                  'localization_in_progress')
 
     def __init__(self, *args, **kwargs):
         self.section_id = kwargs.pop('section_id', None)
@@ -239,13 +237,8 @@ class RevisionForm(forms.ModelForm):
                 content = parsed_content.serialize()
             self.initial['content'] = content
 
-            self.initial['review_tags'] = list(self.instance.review_tags
-                                                            .values_list('name',
-                                                                         flat=True))
-            self.initial['localization_tags'] = list(self.instance
-                                                         .localization_tags
-                                                         .values_list('name',
-                                                                      flat=True))
+            self.initial['review_tags'] = list(
+                self.instance.review_tags.values_list('name', flat=True))
 
         if self.section_id:
             self.fields['toc_depth'].required = False
@@ -388,9 +381,10 @@ class RevisionForm(forms.ModelForm):
             new_rev.document = document
             new_rev.creator = request.user
             new_rev.toc_depth = self.cleaned_data['toc_depth']
+            new_rev.localization_in_progress = (
+                self.cleaned_data['localization_in_progress'])
             new_rev.save()
             new_rev.review_tags.set(*self.cleaned_data['review_tags'])
-            new_rev.localization_tags.set(*self.cleaned_data['localization_tags'])
 
             # when enabled store the user's IP address
             if waffle.switch_is_active('store_revision_ips'):
