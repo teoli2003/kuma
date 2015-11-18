@@ -28,9 +28,9 @@ class AkismetContentTestForm(AkismetTestForm):
 @attr('spam')
 class AkismetFormTests(SimpleTestCase):
     rf = RequestFactory()
-    remote_addr = '0.0.0.0',
-    http_user_agent = 'Mozilla Firefox',
-    http_referer = 'https://www.netscape.com/',
+    remote_addr = '0.0.0.0'
+    http_user_agent = 'Mozilla Firefox'
+    http_referer = 'https://www.netscape.com/'
 
     def setUp(self):
         super(AkismetFormTests, self).setUp()
